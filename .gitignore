@@ -4,12 +4,17 @@
 
 /conf/*
 !/conf/dist
+
+# --- MODULES (TRACKED) ---
 /modules/*
 !/modules/*.md
 !/modules/*.sh
 !/modules/CMakeLists.txt
 !/modules/*.h
 !/modules/*.cmake
+!/modules/mod-*/**
+# ------------------------
+
 /build*/
 /var/*
 !/var/build/.gitkeep
@@ -29,11 +34,10 @@
 
 !.gitkeep
 
-# default build directory if not specified by CMAKE configuration
 /out/*
 
 #
-#Generic
+# Generic
 #
 
 .directory
@@ -54,21 +58,16 @@ CMakeLists.txt.user
 *.LOCAL.*
 
 #
-# IDE & other software
+# IDE
 #
 /.settings/
 /.externalToolBuilders/*
 /.vs
 /out
-# exclude in all levels
 nbproject/
-.sync.ffs_db
-*.kate-swp
-.browse.VC*
 .idea
 cmake-build-*/*
 coverage-report/
-.vs
 
 .vscode/*
 !.vscode/settings.json
@@ -77,32 +76,7 @@ coverage-report/
 !.vscode/extensions.json
 
 #
-# Eclipse
+# CUSTOM
 #
-*.pydevproject
-.metadata
-.gradle
-tmp/
-*.tmp
-*.swp
-*~.nib
-local.properties
-.settings/
-.loadpath
-.project
-.cproject
-
-
-# ==================
-#
-#  CUSTOM
-#
-#  put below your custom ignore rules
-#  for example , if you want to include a
-#  module directly in repositoryyou can do:
-#
-#  !modules/yourmodule
-#
-# ==================
 .cache
 compile_commands.json
