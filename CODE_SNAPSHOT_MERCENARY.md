@@ -77,9 +77,7 @@ void Addmod_mercenary_systemScripts()
 #include "Config.h"
 #include "Log.h"
 #include "Map.h"
-
-#include <unordered_map>
-#include <mutex>
+#include "ScriptedGossip.h" // <-- IMPORTANT: gossip helpers live here
 
 namespace Mercenary
 {
@@ -90,35 +88,27 @@ namespace Mercenary
         ROLE_DPS    = 2
     };
 
-    static bool s_Enable = true;
+    static bool   s_Enable     = true;
     static uint32 s_AgentEntry = 0;
-    static uint32 s_TankEntry = 0;
-    static uint32 s_HealerEntry = 0;
-    static uint32 s_DpsEntry = 0;
-
-    static uint32 s_MaxPerPlayer = 1;
+    static uint32 s_TankEntry  = 0;
+    static uint32 s_HealerEntry= 0;
+    static uint32 s_DpsEntry   = 0;
 
     static bool s_AllowInDungeons = true;
-    static bool s_AllowInRaids = false;
-    static bool s_AllowInBGs = false;
-    static bool s_AllowInArenas = false;
+    static bool s_AllowInRaids    = false;
+    static bool s_AllowInBGs      = false;
+    static bool s_AllowInArenas   = false;
 
     static bool s_Debug = false;
 
-    static std::mutex s_Mtx;
-    // owner_guid_raw -> merc_guid_raw (runtime only)
-    static std::unordered_map<uint64, uint64> s_OwnerToMerc;
-
     static void LoadConfig()
     {
-        s_Enable = sConfigMgr->GetOption<bool>("Mercenary.Enable", true);
-
+        s_Enable     = sConfigMgr->GetOption<bool>("Mercenary.Enable", true);
         s_AgentEntry = sConfigMgr->GetOption<uint32>("Mercenary.AgentEntry", 0);
-        s_TankEntry  = sConfigMgr->GetOption<uint32>("Mercenary.TankEntry", 0);
-        s_HealerEntry= sConfigMgr->GetOption<uint32>("Mercenary.HealerEntry", 0);
-        s_DpsEntry   = sConfigMgr->GetOption<uint32>("Mercenary.DpsEntry", 0);
 
-        s_MaxPerPlayer = sConfigMgr->GetOption<uint32>("Mercenary.MaxPerPlayer", 1);
+        s_TankEntry   = sConfigMgr->GetOption<uint32>("Mercenary.TankEntry", 0);
+        s_HealerEntry = sConfigMgr->GetOption<uint32>("Mercenary.HealerEntry", 0);
+        s_DpsEntry    = sConfigMgr->GetOption<uint32>("Mercenary.DpsEntry", 0);
 
         s_AllowInDungeons = sConfigMgr->GetOption<bool>("Mercenary.AllowInDungeons", true);
         s_AllowInRaids    = sConfigMgr->GetOption<bool>("Mercenary.AllowInRaids", false);
@@ -129,8 +119,9 @@ namespace Mercenary
 
         if (s_Debug)
         {
-            LOG_INFO("module", "[Mercenary] Config loaded: Enable={}, AgentEntry={}, TankEntry={}, HealerEntry={}, DpsEntry={}, MaxPerPlayer={}",
-                s_Enable, s_AgentEntry, s_TankEntry, s_HealerEntry, s_DpsEntry, s_MaxPerPlayer);
+            LOG_INFO("module",
+                "[Mercenary] Config: Enable={}, AgentEntry={}, TankEntry={}, HealerEntry={}, DpsEntry={}",
+                s_Enable, s_AgentEntry, s_TankEntry, s_HealerEntry, s_DpsEntry);
         }
     }
 
@@ -143,21 +134,17 @@ namespace Mercenary
         if (!map)
             return false;
 
-        // Dungeons/Raids
         if (map->IsDungeon() && !map->IsRaid() && !s_AllowInDungeons)
             return false;
 
         if (map->IsRaid() && !s_AllowInRaids)
             return false;
 
-        // BG / Arena separation
         if (map->IsBattlegroundOrArena())
         {
-            // Conservative: if arena-like => arenas flag
             if (map->IsBattleArena())
                 return s_AllowInArenas;
 
-            // Otherwise treat as BG
             return s_AllowInBGs;
         }
 
@@ -177,27 +164,10 @@ namespace Mercenary
 
     static void DB_SetHire(uint64 ownerGuidRaw, Role role, bool active, uint64 mercGuidRaw)
     {
-        // REPLACE INTO style: keep it simple and safe for PR-1
         WorldDatabase.Execute(
             "REPLACE INTO mod_mercenary_hire (owner_guid, merc_guid, role, active) VALUES ({}, {}, {}, {})",
             ownerGuidRaw, mercGuidRaw, uint32(role), active ? 1 : 0
         );
-    }
-
-    static bool DB_GetHire(uint64 ownerGuidRaw, Role& outRole, bool& outActive)
-    {
-        QueryResult result = WorldDatabase.Query(
-            "SELECT role, active FROM mod_mercenary_hire WHERE owner_guid = {}",
-            ownerGuidRaw
-        );
-
-        if (!result)
-            return false;
-
-        Field* f = result->Fetch();
-        outRole = Role(f[0].Get<uint8>());
-        outActive = (f[1].Get<uint8>() != 0);
-        return true;
     }
 
     static void DB_ClearMercGuid(uint64 ownerGuidRaw)
@@ -208,158 +178,48 @@ namespace Mercenary
         );
     }
 
-    static Creature* GetSpawnedMerc(Player* player)
-    {
-        std::lock_guard<std::mutex> g(s_Mtx);
-        auto it = s_OwnerToMerc.find(player->GetGUID().GetRawValue());
-        if (it == s_OwnerToMerc.end() || it->second == 0)
-            return nullptr;
-
-        ObjectGuid mercGuid(it->second);
-        return ObjectAccessor::GetCreature(*player, mercGuid);
-    }
-
-    static void RememberMerc(Player* player, Creature* merc)
-    {
-        std::lock_guard<std::mutex> g(s_Mtx);
-        s_OwnerToMerc[player->GetGUID().GetRawValue()] = merc ? merc->GetGUID().GetRawValue() : 0;
-    }
-
-    static void ForgetMerc(Player* player)
-    {
-        std::lock_guard<std::mutex> g(s_Mtx);
-        s_OwnerToMerc.erase(player->GetGUID().GetRawValue());
-    }
-
-    static bool DespawnMerc(Player* player)
-    {
-        if (!player)
-            return false;
-
-        Creature* merc = GetSpawnedMerc(player);
-        if (!merc)
-            return false;
-
-        merc->DespawnOrUnsummon();
-        RememberMerc(player, nullptr);
-        DB_ClearMercGuid(player->GetGUID().GetRawValue());
-        return true;
-    }
-
-    static bool SpawnMerc(Player* player, Role role)
+    static Creature* SpawnMerc(Player* player, Role role)
     {
         if (!player || !player->IsInWorld())
-            return false;
+            return nullptr;
 
-        if (!s_Enable)
-            return false;
-
-        if (!IsAllowedHere(player))
-            return false;
+        if (!s_Enable || !IsAllowedHere(player))
+            return nullptr;
 
         uint32 entry = EntryForRole(role);
         if (entry == 0)
-            return false;
-
-        // PR-1: ensure only one active merc
-        DespawnMerc(player);
+            return nullptr;
 
         Position pos = player->GetPosition();
         Creature* merc = player->SummonCreature(entry, pos, TEMPSUMMON_MANUAL_DESPAWN);
-
         if (!merc)
-            return false;
+            return nullptr;
 
         merc->SetOwnerGUID(player->GetGUID());
         merc->SetFaction(player->GetFaction());
         merc->SetReactState(REACT_DEFENSIVE);
 
-        RememberMerc(player, merc);
-
-        // Persist: active=1, role, merc_guid=raw (best-effort)
         DB_SetHire(player->GetGUID().GetRawValue(), role, true, merc->GetGUID().GetRawValue());
 
         if (s_Debug)
-        {
-            LOG_INFO("module", "[Mercenary] Spawned merc entry={} role={} for player={}", entry, uint32(role), player->GetName());
-        }
+            LOG_INFO("module", "[Mercenary] Spawned merc role={} entry={} for {}", uint32(role), entry, player->GetName());
 
-        return true;
-    }
-
-    static void RestoreIfActive(Player* player)
-    {
-        if (!player || !player->IsInWorld() || !s_Enable)
-            return;
-
-        Role role;
-        bool active;
-        if (!DB_GetHire(player->GetGUID().GetRawValue(), role, active))
-            return;
-
-        if (!active)
-            return;
-
-        if (!IsAllowedHere(player))
-        {
-            // Keep hire active, just ensure not spawned here
-            DespawnMerc(player);
-            return;
-        }
-
-        // Spawn placeholder for now
-        SpawnMerc(player, role);
+        return merc;
     }
 }
 
-// -----------------------------------------------------------------------------
+// ----------------------------------------------------
 // Scripts
-// -----------------------------------------------------------------------------
+// ----------------------------------------------------
 
 class MercenarySystem_WorldScript : public WorldScript
 {
 public:
-    MercenarySystem_WorldScript() : WorldScript("MercenarySystem_WorldScript") { }
+    MercenarySystem_WorldScript() : WorldScript("MercenarySystem_WorldScript") {}
 
     void OnStartup() override
     {
         Mercenary::LoadConfig();
-    }
-
-    void OnAfterConfigLoad(bool /*reload*/) override
-    {
-        Mercenary::LoadConfig();
-    }
-};
-
-class MercenarySystem_PlayerScript : public PlayerScript
-{
-public:
-    MercenarySystem_PlayerScript() : PlayerScript("MercenarySystem_PlayerScript") { }
-
-    void OnLogin(Player* player) override
-    {
-        Mercenary::RestoreIfActive(player);
-    }
-
-    void OnLogout(Player* player) override
-    {
-        // Keep hire active, but despawn to be safe.
-        Mercenary::DespawnMerc(player);
-        Mercenary::ForgetMerc(player);
-    }
-
-    void OnMapChanged(Player* player) override
-    {
-        // Enforce restrictions on transitions
-        if (!Mercenary::IsAllowedHere(player))
-        {
-            Mercenary::DespawnMerc(player);
-            return;
-        }
-
-        // If hire is active, restore
-        Mercenary::RestoreIfActive(player);
     }
 };
 
@@ -374,29 +234,32 @@ enum MercGossipActions : uint32
 class MercenaryAgent_CreatureScript : public CreatureScript
 {
 public:
-    MercenaryAgent_CreatureScript() : CreatureScript("MercenaryAgent_CreatureScript") { }
+    MercenaryAgent_CreatureScript() : CreatureScript("MercenaryAgent_CreatureScript") {}
 
     bool OnGossipHello(Player* player, Creature* creature) override
     {
         if (!player || !creature)
             return true;
 
-        if (!Mercenary::s_Enable)
-            return true;
-
         // Only act on configured AgentEntry
         if (Mercenary::s_AgentEntry == 0 || creature->GetEntry() != Mercenary::s_AgentEntry)
             return true;
 
-        if (!Mercenary::IsAllowedHere(player))
+        ClearGossipMenuFor(player);
+
+        if (!Mercenary::s_Enable)
         {
-            ClearGossipMenuFor(player);
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Mercenaries are not allowed here.", GOSSIP_SENDER_MAIN, 999);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Mercenary system is disabled.", GOSSIP_SENDER_MAIN, 999);
             SendGossipMenuFor(player, 1, creature->GetGUID());
             return true;
         }
 
-        ClearGossipMenuFor(player);
+        if (!Mercenary::IsAllowedHere(player))
+        {
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Mercenaries are not allowed here.", GOSSIP_SENDER_MAIN, 999);
+            SendGossipMenuFor(player, 1, creature->GetGUID());
+            return true;
+        }
 
         AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "Hire: Tank",   GOSSIP_SENDER_MAIN, ACTION_HIRE_TANK);
         AddGossipItemFor(player, GOSSIP_ICON_BATTLE, "Hire: Healer", GOSSIP_SENDER_MAIN, ACTION_HIRE_HEALER);
@@ -410,9 +273,6 @@ public:
     bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
     {
         if (!player || !creature)
-            return true;
-
-        if (!Mercenary::s_Enable)
             return true;
 
         if (Mercenary::s_AgentEntry == 0 || creature->GetEntry() != Mercenary::s_AgentEntry)
@@ -433,8 +293,8 @@ public:
                 break;
             case ACTION_DISMISS:
             default:
-                Mercenary::DB_SetHire(player->GetGUID().GetRawValue(), Mercenary::ROLE_TANK /*unused*/, false, 0);
-                Mercenary::DespawnMerc(player);
+                Mercenary::DB_SetHire(player->GetGUID().GetRawValue(), Mercenary::ROLE_TANK, false, 0);
+                Mercenary::DB_ClearMercGuid(player->GetGUID().GetRawValue());
                 break;
         }
 
@@ -445,7 +305,7 @@ public:
 void AddMercenarySystemScripts()
 {
     new MercenarySystem_WorldScript();
-    new MercenarySystem_PlayerScript();
     new MercenaryAgent_CreatureScript();
 }
+
 ```
