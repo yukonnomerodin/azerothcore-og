@@ -12,13 +12,13 @@ Mercenary.Enable = 1
 
 # NPC entry that will act as "Mercenary Agent".
 # Use any EXISTING creature_template entry in your DB and spawn it via .npc add <entry>.
-Mercenary.AgentEntry = 0
+Mercenary.AgentEntry = 246
 
 # Creature entries to use as mercenary bodies (placeholders for PR-1).
 # Use any EXISTING creature_template entries. Later we can add custom templates.
-Mercenary.TankEntry   = 0
-Mercenary.HealerEntry = 0
-Mercenary.DpsEntry    = 0
+Mercenary.TankEntry   = 246
+Mercenary.HealerEntry = 246
+Mercenary.DpsEntry    = 246
 
 # Hard cap per player (Patch 1 default: 1)
 Mercenary.MaxPerPlayer = 1
