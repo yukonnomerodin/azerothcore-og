@@ -1,0 +1,26 @@
+###############################################################################
+# Mercenary System (mod-mercenary-system)
+#
+# Permanent gameplay mechanic. Always available.
+# Must NOT depend on online population.
+# Population bots are a separate module.
+###############################################################################
+
+[worldserver]
+
+Mercenary.Enable = 1
+
+# Hard cap per player (Patch 1 default: 1)
+Mercenary.MaxPerPlayer = 1
+
+# Content restrictions (Patch 1 defaults)
+Mercenary.AllowInDungeons = 1
+Mercenary.AllowInRaids = 0
+Mercenary.AllowInBattlegrounds = 0
+Mercenary.AllowInArenas = 0
+
+# AI throttling (ms). Patch 1 baseline.
+Mercenary.AIUpdateIntervalMs = 300
+
+# Debug logging (0/1)
+Mercenary.Debug = 0
