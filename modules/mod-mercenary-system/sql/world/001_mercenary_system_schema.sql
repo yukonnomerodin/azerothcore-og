@@ -1,10 +1,13 @@
--- modules/mod-mercenary-system/sql/world/001_mercenary_system_schema.sql
--- PR-0: schema stub (can be extended later)
+-- PR-1: Mercenary hire persistence (world DB)
 
-CREATE TABLE IF NOT EXISTS mercenary_owner (
-    owner_guid BIGINT UNSIGNED NOT NULL,
-    mercenary_guid BIGINT UNSIGNED NOT NULL DEFAULT 0,
-    role TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    active TINYINT(1) NOT NULL DEFAULT 0,
-    PRIMARY KEY (owner_guid)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+CREATE TABLE IF NOT EXISTS `mod_mercenary_hire` (
+  `owner_guid` BIGINT UNSIGNED NOT NULL,
+  `merc_guid`  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `role`       TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `active`     TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`owner_guid`),
+  KEY `idx_merc_guid` (`merc_guid`),
+  KEY `idx_active` (`active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -10,16 +10,26 @@
 
 Mercenary.Enable = 1
 
+# NPC entry that will act as "Mercenary Agent".
+# Use any EXISTING creature_template entry in your DB and spawn it via .npc add <entry>.
+Mercenary.AgentEntry = 0
+
+# Creature entries to use as mercenary bodies (placeholders for PR-1).
+# Use any EXISTING creature_template entries. Later we can add custom templates.
+Mercenary.TankEntry   = 0
+Mercenary.HealerEntry = 0
+Mercenary.DpsEntry    = 0
+
 # Hard cap per player (Patch 1 default: 1)
 Mercenary.MaxPerPlayer = 1
 
-# Content restrictions (Patch 1 defaults)
+# Content restrictions (Patch 1 guardrails)
 Mercenary.AllowInDungeons = 1
 Mercenary.AllowInRaids = 0
 Mercenary.AllowInBattlegrounds = 0
 Mercenary.AllowInArenas = 0
 
-# AI throttling (ms). Patch 1 baseline.
+# PR-1 has no AI, but keep it for future PRs
 Mercenary.AIUpdateIntervalMs = 300
 
 # Debug logging (0/1)

@@ -1,3 +1,74 @@
+# CODE_SNAPSHOT_MERCENARY.md
+# mod-mercenary-system — Current Code Snapshot
+
+## Status
+- Current PR level: PR-0 / PR-1 / PR-2 ...
+- Last updated: YYYY-MM-DD
+
+## Module tree
+modules/mod-mercenary-system/
+- include.sh
+- conf/mod_mercenary_system.conf.dist
+- sql/world/...
+- src/mod-mercenary-system.cpp
+- src/mod-mercenary-system_loader.cpp
+
+## Key decisions (do not violate)
+- Mercenaries are a permanent gameplay mechanic (always available).
+- Population bots are a separate module; no coupling.
+- No core modifications unless explicitly requested.
+- Event-driven logic; no per-tick global scans.
+
+## Current config keys
+- Mercenary.Enable = 1
+- Mercenary.AgentEntry = 0
+- Mercenary.TankEntry   = 0
+- Mercenary.HealerEntry = 0
+- Mercenary.DpsEntry    = 0
+- Mercenary.MaxPerPlayer = 1
+- Mercenary.AllowInDungeons = 1
+- Mercenary.AllowInRaids = 0
+- Mercenary.AllowInBattlegrounds = 0
+- Mercenary.AllowInArenas = 0
+- Mercenary.AIUpdateIntervalMs = 300
+- Mercenary.Debug = 0
+
+
+## SQL schema
+-- PR-1: Mercenary hire persistence (world DB)
+
+CREATE TABLE IF NOT EXISTS `mod_mercenary_hire` (
+  `owner_guid` BIGINT UNSIGNED NOT NULL,
+  `merc_guid`  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `role`       TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `active`     TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`owner_guid`),
+  KEY `idx_merc_guid` (`merc_guid`),
+  KEY `idx_active` (`active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+## Current code (paste full files)
+- mod-mercenary-system_loader.cpp
+- mod-mercenary-system.cpp
+### src/mod-mercenary-system_loader.cpp
+```cpp
+// modules/mod-mercenary-system/src/mod-mercenary-system_loader.cpp
+
+void AddMercenarySystemScripts();
+
+void Addmod_mercenary_systemScripts()
+{
+    AddMercenarySystemScripts();
+}
+```
+
+### src/mod-mercenary-system.cpp
+```cpp
+// modules/mod-mercenary-system/src/mod-mercenary-system.cpp
+
 #include "ScriptMgr.h"
 #include "Player.h"
 #include "Creature.h"
@@ -377,3 +448,4 @@ void AddMercenarySystemScripts()
     new MercenarySystem_PlayerScript();
     new MercenaryAgent_CreatureScript();
 }
+```
