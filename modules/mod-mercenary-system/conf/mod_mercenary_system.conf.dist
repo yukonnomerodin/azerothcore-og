@@ -12,7 +12,7 @@ MercenarySystem.Enable = 1
 
 # NPC entry that will act as "Mercenary Agent".
 # Use any EXISTING creature_template entry in your DB and spawn it via .npc add <entry>.
-MercenarySystem.AgentEntry = 246
+MercenarySystem.AgentEntry = 900246
 
 # Creature entries to use as mercenary bodies (placeholders for PR-1).
 # Use any EXISTING creature_template entries. Later we can add custom templates.

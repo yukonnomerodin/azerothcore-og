@@ -20,18 +20,28 @@ modules/mod-mercenary-system/
 - Event-driven logic; no per-tick global scans.
 
 ## Current config keys
-- Mercenary.Enable = 1
-- Mercenary.AgentEntry = 0
-- Mercenary.TankEntry   = 0
-- Mercenary.HealerEntry = 0
-- Mercenary.DpsEntry    = 0
-- Mercenary.MaxPerPlayer = 1
-- Mercenary.AllowInDungeons = 1
-- Mercenary.AllowInRaids = 0
-- Mercenary.AllowInBattlegrounds = 0
-- Mercenary.AllowInArenas = 0
-- Mercenary.AIUpdateIntervalMs = 300
-- Mercenary.Debug = 0
+###############################################################################
+# Mercenary System (mod-mercenary-system)
+#
+# Permanent gameplay mechanic. Always available.
+# Must NOT depend on online population.
+# Population bots are a separate module.
+###############################################################################
+
+[worldserver]
+
+MercenarySystem.Enable = 1
+MercenarySystem.AgentEntry = 900246
+MercenarySystem.TankEntry   = 246
+MercenarySystem.HealerEntry = 246
+MercenarySystem.DpsEntry    = 246
+MercenarySystem.MaxPerPlayer = 1
+MercenarySystem.AllowInDungeons = 1
+MercenarySystem.AllowInRaids = 0
+MercenarySystem.AllowInBGs = 1
+MercenarySystem.AllowInArenas = 0
+MercenarySystem.AIUpdateIntervalMs = 300
+MercenarySystem.Debug = 0
 
 
 ## SQL schema
@@ -70,14 +80,15 @@ void Addmod_mercenary_systemScripts()
 // modules/mod-mercenary-system/src/mod-mercenary-system.cpp
 
 #include "ScriptMgr.h"
-#include "Player.h"
 #include "Creature.h"
-#include "ObjectAccessor.h"
 #include "DatabaseEnv.h"
-#include "Config.h"
-#include "Log.h"
+#include "GameTime.h"
 #include "Map.h"
-#include "ScriptedGossip.h" // <-- IMPORTANT: gossip helpers live here
+#include "ObjectAccessor.h"
+#include "Player.h"
+#include "ScriptedGossip.h" // gossip helpers
+#include "Configuration/Config.h"
+#include "Log.h"
 
 namespace Mercenary
 {
@@ -88,40 +99,53 @@ namespace Mercenary
         ROLE_DPS    = 2
     };
 
-    static bool   s_Enable     = true;
-    static uint32 s_AgentEntry = 0;
-    static uint32 s_TankEntry  = 0;
-    static uint32 s_HealerEntry= 0;
-    static uint32 s_DpsEntry   = 0;
+    struct HireData
+    {
+        bool active = false;
+        Role role = ROLE_TANK;
+        ObjectGuid mercGuid = ObjectGuid::Empty;
+        bool found = false;
+    };
+
+    static bool   s_Enable        = true;
+    static uint32 s_AgentEntry    = 0;
+    static uint32 s_TankEntry     = 0;
+    static uint32 s_HealerEntry   = 0;
+    static uint32 s_DpsEntry      = 0;
+    static uint32 s_MaxPerPlayer  = 1;
+    static uint32 s_AIUpdateMs    = 300;
 
     static bool s_AllowInDungeons = true;
     static bool s_AllowInRaids    = false;
-    static bool s_AllowInBGs      = false;
+    static bool s_AllowInBGs      = true;
     static bool s_AllowInArenas   = false;
 
     static bool s_Debug = false;
 
     static void LoadConfig()
     {
-        s_Enable     = sConfigMgr->GetOption<bool>("Mercenary.Enable", true);
-        s_AgentEntry = sConfigMgr->GetOption<uint32>("Mercenary.AgentEntry", 0);
+        s_Enable     = sConfigMgr->GetOption<bool>("MercenarySystem.Enable", true);
+        s_AgentEntry = sConfigMgr->GetOption<uint32>("MercenarySystem.AgentEntry", 0);
 
-        s_TankEntry   = sConfigMgr->GetOption<uint32>("Mercenary.TankEntry", 0);
-        s_HealerEntry = sConfigMgr->GetOption<uint32>("Mercenary.HealerEntry", 0);
-        s_DpsEntry    = sConfigMgr->GetOption<uint32>("Mercenary.DpsEntry", 0);
+        s_TankEntry   = sConfigMgr->GetOption<uint32>("MercenarySystem.TankEntry", 0);
+        s_HealerEntry = sConfigMgr->GetOption<uint32>("MercenarySystem.HealerEntry", 0);
+        s_DpsEntry    = sConfigMgr->GetOption<uint32>("MercenarySystem.DpsEntry", 0);
 
-        s_AllowInDungeons = sConfigMgr->GetOption<bool>("Mercenary.AllowInDungeons", true);
-        s_AllowInRaids    = sConfigMgr->GetOption<bool>("Mercenary.AllowInRaids", false);
-        s_AllowInBGs      = sConfigMgr->GetOption<bool>("Mercenary.AllowInBattlegrounds", false);
-        s_AllowInArenas   = sConfigMgr->GetOption<bool>("Mercenary.AllowInArenas", false);
+        s_MaxPerPlayer = sConfigMgr->GetOption<uint32>("MercenarySystem.MaxPerPlayer", 1);
+        s_AIUpdateMs   = sConfigMgr->GetOption<uint32>("MercenarySystem.AIUpdateIntervalMs", 300);
 
-        s_Debug = sConfigMgr->GetOption<bool>("Mercenary.Debug", false);
+        s_AllowInDungeons = sConfigMgr->GetOption<bool>("MercenarySystem.AllowInDungeons", true);
+        s_AllowInRaids    = sConfigMgr->GetOption<bool>("MercenarySystem.AllowInRaids", false);
+        s_AllowInBGs      = sConfigMgr->GetOption<bool>("MercenarySystem.AllowInBGs", true);
+        s_AllowInArenas   = sConfigMgr->GetOption<bool>("MercenarySystem.AllowInArenas", false);
+
+        s_Debug = sConfigMgr->GetOption<bool>("MercenarySystem.Debug", false);
 
         if (s_Debug)
         {
             LOG_INFO("module",
-                "[Mercenary] Config: Enable={}, AgentEntry={}, TankEntry={}, HealerEntry={}, DpsEntry={}",
-                s_Enable, s_AgentEntry, s_TankEntry, s_HealerEntry, s_DpsEntry);
+                "[Mercenary] Config: Enable={}, AgentEntry={}, TankEntry={}, HealerEntry={}, DpsEntry={}, MaxPerPlayer={}, AIUpdateMs={}",
+                s_Enable, s_AgentEntry, s_TankEntry, s_HealerEntry, s_DpsEntry, s_MaxPerPlayer, s_AIUpdateMs);
         }
     }
 
@@ -162,20 +186,72 @@ namespace Mercenary
         }
     }
 
-    static void DB_SetHire(uint64 ownerGuidRaw, Role role, bool active, uint64 mercGuidRaw)
+    static HireData DB_LoadHire(uint64 ownerGuidRaw)
+    {
+        HireData data;
+        if (QueryResult result = WorldDatabase.Query(
+                "SELECT role, active, merc_guid FROM mod_mercenary_hire WHERE owner_guid = {}",
+                ownerGuidRaw))
+        {
+            Field* fields = result->Fetch();
+            data.role = Role(fields[0].Get<uint8>());
+            data.active = fields[1].Get<uint8>() != 0;
+            data.mercGuid = ObjectGuid(fields[2].Get<uint64>());
+            data.found = true;
+        }
+        return data;
+    }
+
+    static void DB_UpsertHire(uint64 ownerGuidRaw, Role role, bool active, uint64 mercGuidRaw)
     {
         WorldDatabase.Execute(
-            "REPLACE INTO mod_mercenary_hire (owner_guid, merc_guid, role, active) VALUES ({}, {}, {}, {})",
+            "INSERT INTO mod_mercenary_hire (owner_guid, merc_guid, role, active) "
+            "VALUES ({}, {}, {}, {}) "
+            "ON DUPLICATE KEY UPDATE merc_guid = VALUES(merc_guid), role = VALUES(role), active = VALUES(active)",
             ownerGuidRaw, mercGuidRaw, uint32(role), active ? 1 : 0
         );
     }
 
-    static void DB_ClearMercGuid(uint64 ownerGuidRaw)
+    static void DB_UpdateMercGuid(uint64 ownerGuidRaw, uint64 mercGuidRaw)
     {
         WorldDatabase.Execute(
-            "UPDATE mod_mercenary_hire SET merc_guid = 0 WHERE owner_guid = {}",
-            ownerGuidRaw
+            "UPDATE mod_mercenary_hire SET merc_guid = {} WHERE owner_guid = {}",
+            mercGuidRaw, ownerGuidRaw
         );
+    }
+
+    static void DB_UpdateActive(uint64 ownerGuidRaw, bool active)
+    {
+        WorldDatabase.Execute(
+            "UPDATE mod_mercenary_hire SET active = {} WHERE owner_guid = {}",
+            active ? 1 : 0, ownerGuidRaw
+        );
+    }
+
+    static bool DespawnMerc(Player* player, ObjectGuid mercGuid)
+    {
+        if (!player || mercGuid.IsEmpty())
+            return false;
+
+        if (Creature* merc = ObjectAccessor::GetCreature(*player, mercGuid))
+        {
+            merc->DespawnOrUnsummon(0);
+            return true;
+        }
+
+        return false;
+    }
+
+    static void LogMissingEntry(uint32 entry, char const* context)
+    {
+        static Seconds lastLogTime = Seconds(0);
+        Seconds now = GameTime::GetGameTime();
+
+        if (now - lastLogTime < Seconds(60))
+            return;
+
+        lastLogTime = now;
+        LOG_ERROR("module", "[Mercenary] Missing creature entry {} for {}.", entry, context);
     }
 
     static Creature* SpawnMerc(Player* player, Role role)
@@ -186,9 +262,22 @@ namespace Mercenary
         if (!s_Enable || !IsAllowedHere(player))
             return nullptr;
 
+        HireData hire = DB_LoadHire(player->GetGUID().GetRawValue());
+        if (s_MaxPerPlayer <= 1 && hire.found && hire.active)
+        {
+            if (!hire.mercGuid.IsEmpty())
+            {
+                if (Creature* existing = ObjectAccessor::GetCreature(*player, hire.mercGuid))
+                    return existing;
+            }
+        }
+
         uint32 entry = EntryForRole(role);
         if (entry == 0)
+        {
+            LogMissingEntry(entry, "mercenary role");
             return nullptr;
+        }
 
         Position pos = player->GetPosition();
         Creature* merc = player->SummonCreature(entry, pos, TEMPSUMMON_MANUAL_DESPAWN);
@@ -199,12 +288,52 @@ namespace Mercenary
         merc->SetFaction(player->GetFaction());
         merc->SetReactState(REACT_DEFENSIVE);
 
-        DB_SetHire(player->GetGUID().GetRawValue(), role, true, merc->GetGUID().GetRawValue());
+        DB_UpsertHire(player->GetGUID().GetRawValue(), role, true, merc->GetGUID().GetRawValue());
 
         if (s_Debug)
             LOG_INFO("module", "[Mercenary] Spawned merc role={} entry={} for {}", uint32(role), entry, player->GetName());
 
         return merc;
+    }
+
+    static void EnsureMercenaryState(Player* player)
+    {
+        if (!player || !player->IsInWorld())
+            return;
+
+        HireData hire = DB_LoadHire(player->GetGUID().GetRawValue());
+        if (!hire.found || !hire.active)
+            return;
+
+        if (!IsAllowedHere(player))
+        {
+            if (DespawnMerc(player, hire.mercGuid))
+                DB_UpdateMercGuid(player->GetGUID().GetRawValue(), 0);
+            return;
+        }
+
+        if (!hire.mercGuid.IsEmpty())
+        {
+            if (ObjectAccessor::GetCreature(*player, hire.mercGuid))
+                return;
+
+            DB_UpdateMercGuid(player->GetGUID().GetRawValue(), 0);
+        }
+
+        SpawnMerc(player, hire.role);
+    }
+
+    static void CleanupMercenary(Player* player)
+    {
+        if (!player)
+            return;
+
+        HireData hire = DB_LoadHire(player->GetGUID().GetRawValue());
+        if (!hire.found)
+            return;
+
+        if (DespawnMerc(player, hire.mercGuid))
+            DB_UpdateMercGuid(player->GetGUID().GetRawValue(), 0);
     }
 }
 
@@ -218,6 +347,11 @@ public:
     MercenarySystem_WorldScript() : WorldScript("MercenarySystem_WorldScript") {}
 
     void OnStartup() override
+    {
+        Mercenary::LoadConfig();
+    }
+
+    void OnAfterConfigLoad(bool /*reload*/) override
     {
         Mercenary::LoadConfig();
     }
@@ -293,12 +427,47 @@ public:
                 break;
             case ACTION_DISMISS:
             default:
-                Mercenary::DB_SetHire(player->GetGUID().GetRawValue(), Mercenary::ROLE_TANK, false, 0);
-                Mercenary::DB_ClearMercGuid(player->GetGUID().GetRawValue());
+            {
+                Mercenary::CleanupMercenary(player);
+                Mercenary::DB_UpdateActive(player->GetGUID().GetRawValue(), false);
                 break;
+            }
         }
 
         return true;
+    }
+};
+
+class MercenarySystem_PlayerScript : public PlayerScript
+{
+public:
+    MercenarySystem_PlayerScript() : PlayerScript("MercenarySystem_PlayerScript") {}
+
+    void OnPlayerLogin(Player* player) override
+    {
+        Mercenary::EnsureMercenaryState(player);
+    }
+
+    void OnPlayerLogout(Player* player) override
+    {
+        Mercenary::CleanupMercenary(player);
+    }
+
+    void OnPlayerUpdateZone(Player* player, uint32 /*newZone*/, uint32 /*newArea*/) override
+    {
+        Mercenary::EnsureMercenaryState(player);
+    }
+
+    void OnPlayerJoinBG(Player* player) override
+    {
+        if (player && !Mercenary::s_AllowInBGs)
+            Mercenary::CleanupMercenary(player);
+    }
+
+    void OnPlayerJoinArena(Player* player) override
+    {
+        if (player && !Mercenary::s_AllowInArenas)
+            Mercenary::CleanupMercenary(player);
     }
 };
 
@@ -306,6 +475,8 @@ void AddMercenarySystemScripts()
 {
     new MercenarySystem_WorldScript();
     new MercenaryAgent_CreatureScript();
+    new MercenarySystem_PlayerScript();
 }
+
 
 ```
