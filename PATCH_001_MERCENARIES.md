@@ -131,18 +131,18 @@ Notes:
 ## Configuration (conf.dist)
 
 ### Required keys (PR-1)
-- `Mercenary.Enable`
-- `Mercenary.AgentEntry`
-- `Mercenary.TankEntry`
-- `Mercenary.HealerEntry`
-- `Mercenary.DpsEntry`
-- `Mercenary.MaxPerPlayer`
-- `Mercenary.AllowInDungeons`
-- `Mercenary.AllowInRaids`
-- `Mercenary.AllowInBattlegrounds`
-- `Mercenary.AllowInArenas`
-- `Mercenary.AIUpdateIntervalMs` (reserved for PR-2+)
-- `Mercenary.Debug`
+MercenarySystem.Enable
+MercenarySystem.AgentEntry
+MercenarySystem.TankEntry
+MercenarySystem.HealerEntry
+MercenarySystem.DpsEntry
+MercenarySystem.MaxPerPlayer
+MercenarySystem.AllowInDungeons
+MercenarySystem.AllowInRaids
+MercenarySystem.AllowInBGs
+MercenarySystem.AllowInArenas
+MercenarySystem.AIUpdateIntervalMs (reserved for PR-2+)
+MercenarySystem.Debug
 
 ---
 

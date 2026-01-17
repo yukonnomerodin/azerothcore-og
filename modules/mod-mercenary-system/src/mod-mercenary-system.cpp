@@ -348,7 +348,11 @@ public:
             default:
             {
                 Mercenary::CleanupMercenary(player);
-                Mercenary::DB_UpdateActive(player->GetGUID().GetRawValue(), false);
+
+            // ВАЖНО: чистим merc_guid всегда, даже если creature уже не найдена
+            Mercenary::DB_UpdateMercGuid(player->GetGUID().GetRawValue(), 0);
+            Mercenary::DB_UpdateActive(player->GetGUID().GetRawValue(), false);
+
                 break;
             }
         }
@@ -377,17 +381,7 @@ public:
         Mercenary::EnsureMercenaryState(player);
     }
 
-    void OnPlayerJoinBG(Player* player) override
-    {
-        if (player && !Mercenary::s_AllowInBGs)
-            Mercenary::CleanupMercenary(player);
-    }
-
-    void OnPlayerJoinArena(Player* player) override
-    {
-        if (player && !Mercenary::s_AllowInArenas)
-            Mercenary::CleanupMercenary(player);
-    }
+    
 };
 
 void AddMercenarySystemScripts()
